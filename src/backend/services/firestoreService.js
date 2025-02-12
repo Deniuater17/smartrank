@@ -123,6 +123,37 @@ export async function moveToTerminatedCollection(productId, model) {
     }
 }
 
+// Nueva función para mover productos a "pendientes"
+export async function moveToPendingCollection(productId, model) {
+    if (!productId) {
+        console.error("Error: El ID del producto no es válido. No se puede mover a 'pendientes'.");
+        return;
+    }
+  
+    const sanitizedModel = model.replace(/["']/g, ""); // Sanitiza el modelo
+    const productRef = db.collection(model).doc(productId);
+    const pendingRef = db.collection("pendientes").doc(sanitizedModel).collection("products").doc(productId);
+  
+    try {
+        const productSnapshot = await productRef.get();
+        if (!productSnapshot.exists) {
+            console.error(`Producto ${productId} no encontrado en la colección ${model}.`);
+            return;
+        }
+  
+        const productData = productSnapshot.data();
+        console.log(`Moviendo producto ${productId} a 'pendientes' con los datos existentes.`);
+  
+        // Mover producto a "pendientes"
+        await pendingRef.set({
+            ...productData,
+            movedToPendingAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+    } catch (error) {
+        console.error(`Error al mover el producto ${productId} a 'pendientes':`, error);
+    }
+  }
+
 /**
  * Obtiene los IDs de los productos existentes en una colección.
  * @param {string} model - Nombre de la colección (modelo del producto).

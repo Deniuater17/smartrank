@@ -3,7 +3,8 @@ import fs from "fs/promises";
 import { 
   saveOrUpdateProduct, 
   moveToTerminatedCollection, 
-  getProcessedIds 
+  getProcessedIds,
+  moveToPendingCollection 
 } from "./services/firestoreService.js";
 import { scrapeProductDetails } from "./services/scraper.js";
 
@@ -24,44 +25,48 @@ async function processExistingProducts(model, firebaseProducts) {
   const page = await browser.newPage();
 
   for (const productId of firebaseProducts) {
-      try {
-          console.log(`Verificando producto en Wallapop: ${productId}`);
-          const productUrl = `https://es.wallapop.com/item/${productId}`;
-          console.log(`Navegando a la URL: ${productUrl}`);
+    try {
+        console.log(`Verificando producto en Wallapop: ${productId}`);
+        const productUrl = `https://es.wallapop.com/item/${productId}`;
+        console.log(`Navegando a la URL: ${productUrl}`);
 
-          await page.goto(productUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+        await page.goto(productUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
 
-          // Scrapea los detalles del producto
-          const details = await scrapeProductDetails(productUrl);
+        // Scrapea los detalles del producto
+        const details = await scrapeProductDetails(productUrl);
 
-          // Detectar datos incompletos o scraping fallido
-          if (!details) {
-              console.warn(`Datos incompletos o scraping fallido para el producto ${productId}. Moviendo a 'terminados'.`);
-              // Mueve el producto con sus datos existentes a la colección "terminados"
-              await moveToTerminatedCollection(productId, model);
-              continue;
-          }
+        // Detectar datos incompletos o scraping fallido
+        if (!details) {
+            console.warn(`Producto ${productId} no encontrado en Wallapop. Moviendo a 'pendientes'.`);
+            await moveToPendingCollection(productId, model); // Nueva función para pendientes
+            continue;
+        }
 
-          // Verificar si el producto está reservado
-          if (details.reservado) {
-              console.log(`Producto ${productId} está reservado. Moviendo a 'terminados'.`);
-              await moveToTerminatedCollection(productId, model);
-              continue;
-          }
+        // Verificar si el producto está reservado
+        if (details.reservado) {
+            console.log(`Producto ${productId} está reservado. Moviendo a 'terminados'.`);
+            await moveToTerminatedCollection(productId, model);
+            continue;
+        }
 
-          // Si los datos son válidos, actualiza o guarda el producto
-          console.log(`Actualizando datos del producto: ${productId}`);
-          await saveOrUpdateProduct(details, model);
-      } catch (error) {
-          console.error(`Error procesando el producto ${productId}:`, error);
-          console.log(`Producto ${productId} será movido a 'terminados' debido al error.`);
-          // Manejo de errores: Mueve el producto a "terminados"
-          await moveToTerminatedCollection(productId, model);
-      }
-  }
+        // Si los datos son válidos, actualiza o guarda el producto
+        console.log(`Actualizando datos del producto: ${productId}`);
+        await saveOrUpdateProduct(details, model);
+    } catch (error) {
+        console.error(`Error procesando el producto ${productId}:`, error);
+        console.log(`Producto ${productId} será movido a 'pendientes' debido al error.`);
+        // Manejo de errores: Mueve el producto a "pendientes"
+        await moveToPendingCollection(productId, model);
+    }
+}
 
   await browser.close();
+
 }
+
+
+
+
 
 
 // Scraping de nuevos productos en Wallapop
